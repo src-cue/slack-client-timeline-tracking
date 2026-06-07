@@ -22,7 +22,7 @@ from PIL import Image
 SHEET_ID      = "1M_ZTPSUVLskxa_cuEXgUE2B6YR8LV_hm54GXjRDCg94"
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 SLACK_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
-SLACK_USER_ID = "U0ASCMDD69L"   # rakesh@cuepilot.ai
+SLACK_CHANNEL = "C0B7JJ23S1K"
 ROWS_PER_SHOT = 10              # rows per screenshot
 
 # ── Fetch & parse sheet ───────────────────────────────────────────────────────
@@ -172,15 +172,6 @@ def render_chunk(rows, title, out_path, row_offset=0):
 
 # ── Slack helpers ─────────────────────────────────────────────────────────────
 
-def get_dm_channel():
-    r = requests.post("https://slack.com/api/conversations.open",
-                      headers={"Authorization": f"Bearer {SLACK_TOKEN}",
-                               "Content-Type": "application/json"},
-                      json={"users": SLACK_USER_ID})
-    r.raise_for_status()
-    data = r.json()
-    assert data.get("ok"), f"conversations.open failed: {data}"
-    return data["channel"]["id"]
 
 def upload_file(file_path, filename):
     """Upload file bytes, return file_id (does not post to channel yet)."""
@@ -234,11 +225,10 @@ def upload_chunks(rows, label, emoji, slug, today_str, channel_id, tmp):
 def main():
     completed, in_progress = fetch_rows()
     today_str = date.today().strftime("%-d %B %Y")
-    channel_id = get_dm_channel()
 
     with tempfile.TemporaryDirectory() as tmp:
-        upload_chunks(completed,   "Completed",              "✅", "completed",   today_str, channel_id, tmp)
-        upload_chunks(in_progress, "In Progress/Not Started","🔄", "in_progress", today_str, channel_id, tmp)
+        upload_chunks(completed,   "Completed",              "✅", "completed",   today_str, SLACK_CHANNEL, tmp)
+        upload_chunks(in_progress, "In Progress/Not Started","🔄", "in_progress", today_str, SLACK_CHANNEL, tmp)
 
     print("Done.")
 
