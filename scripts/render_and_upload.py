@@ -125,24 +125,24 @@ def build_html(rows, title, row_offset=0):
           <td style="color:#aaa;font-size:11px;padding:6px 8px;text-align:center;white-space:nowrap;">{row_offset+i+1}</td>
           <td style="padding:5px 8px;">{meet_chip(meet)}</td>
           <td style="padding:5px 8px;font-size:12px;color:#333;white-space:nowrap;">{customer}</td>
-          <td style="padding:5px 10px;font-size:12px;color:#222;max-width:280px;line-height:1.4;">{task}</td>
+          <td style="padding:5px 10px;font-size:12px;color:#222;max-width:380px;line-height:1.4;">{task}</td>
           <td style="padding:5px 8px;font-size:12px;color:#555;max-width:140px;">{owners}</td>
           <td style="padding:5px 8px;">{status_badge(status)}</td>
           <td style="padding:5px 8px;">{stage_badge(stage)}</td>
           <td style="padding:5px 8px;font-size:12px;color:#555;white-space:nowrap;">{int_dl}</td>
           <td style="padding:5px 8px;font-size:12px;color:#555;white-space:nowrap;">{cli_dl}</td>
           <td style="padding:5px 8px;font-size:12px;color:#555;white-space:nowrap;">{del_date or "—"}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#666;max-width:180px;line-height:1.4;">{notes}</td>
+          <td style="padding:5px 8px;font-size:11px;color:#666;max-width:250px;line-height:1.4;">{notes}</td>
         </tr>"""
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>
-  body {{ margin:0; padding:14px 18px; background:#fff; font-family:Arial,sans-serif; width:290mm; }}
+  body {{ margin:0; padding:14px 18px; background:#fff; font-family:Arial,sans-serif; width:340mm; }}
   h2   {{ font-size:13px; color:#333; margin:0 0 8px; font-weight:600; }}
   table {{ border-collapse:collapse; width:100%; }}
   th, td {{ vertical-align:middle; }}
-  @page {{ size:310mm 5000mm; margin:0; }}
+  @page {{ size:360mm 5000mm; margin:0; }}
 </style></head>
 <body>
 <h2>{title} <span style="color:#888;font-weight:400;font-size:11px;">{today}</span></h2>
