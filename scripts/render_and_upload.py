@@ -182,7 +182,8 @@ def get_dm_channel():
     assert data.get("ok"), f"conversations.open failed: {data}"
     return data["channel"]["id"]
 
-def slack_upload(file_path, filename, title, comment, channel_id):
+def upload_file(file_path, filename):
+    """Upload file bytes, return file_id (does not post to channel yet)."""
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     file_size = os.path.getsize(file_path)
 
@@ -196,31 +197,39 @@ def slack_upload(file_path, filename, title, comment, channel_id):
     with open(file_path, "rb") as fh:
         up = requests.post(data["upload_url"], files={"file": (filename, fh, "image/png")})
     up.raise_for_status()
+    print(f"  Staged: {filename}")
+    return data["file_id"]
 
+def complete_upload(file_ids, label, comment, channel_id):
+    """Post all staged files as a single Slack message."""
+    headers = {"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"}
     done = requests.post("https://slack.com/api/files.completeUploadExternal",
-                         headers={**headers, "Content-Type": "application/json"},
+                         headers=headers,
                          json={
-                             "files": [{"id": data["file_id"], "title": title}],
+                             "files": [{"id": fid, "title": label} for fid in file_ids],
                              "channel_id": channel_id,
                              "initial_comment": comment,
                          })
     done.raise_for_status()
     result = done.json()
     assert result.get("ok"), f"completeUploadExternal: {result}"
-    print(f"  Uploaded: {filename}")
+    print(f"  Posted {len(file_ids)} screenshot(s) as one message")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def upload_chunks(rows, label, emoji, slug, today_str, channel_id, tmp):
     total = len(rows)
     chunks = [rows[i:i+ROWS_PER_SHOT] for i in range(0, total, ROWS_PER_SHOT)]
+    # Stage all files first
+    file_ids = []
     for idx, chunk in enumerate(chunks, 1):
         out = os.path.join(tmp, f"{slug}_{idx:02d}.png")
         render_chunk(chunk, f"{emoji} {label}", out, row_offset=(idx-1)*ROWS_PER_SHOT)
-        # Header comment only on first screenshot; rest upload silently
-        comment = f"*{emoji} {label}* — {today_str}  ({total} items)" if idx == 1 else ""
-        slack_upload(out, f"{slug}_{date.today():%Y%m%d}_{idx:02d}.png",
-                     f"{emoji} {label}", comment, channel_id)
+        file_ids.append(upload_file(out, f"{slug}_{date.today():%Y%m%d}_{idx:02d}.png"))
+    # Post all as one message
+    complete_upload(file_ids, f"{emoji} {label}",
+                    f"*{emoji} {label}* — {today_str}  ({total} items)",
+                    channel_id)
 
 def main():
     completed, in_progress = fetch_rows()
