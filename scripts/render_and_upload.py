@@ -22,7 +22,7 @@ from PIL import Image
 SHEET_ID      = "1M_ZTPSUVLskxa_cuEXgUE2B6YR8LV_hm54GXjRDCg94"
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 SLACK_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
-SLACK_CHANNEL = "C0B7JJ23S1K"
+SLACK_CHANNEL = "C0B1J30FN8L"
 ROWS_PER_SHOT = 10              # rows per screenshot
 
 # ── Fetch & parse sheet ───────────────────────────────────────────────────────
