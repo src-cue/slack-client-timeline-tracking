@@ -214,15 +214,13 @@ def slack_upload(file_path, filename, title, comment, channel_id):
 def upload_chunks(rows, label, emoji, slug, today_str, channel_id, tmp):
     total = len(rows)
     chunks = [rows[i:i+ROWS_PER_SHOT] for i in range(0, total, ROWS_PER_SHOT)]
-    n = len(chunks)
     for idx, chunk in enumerate(chunks, 1):
-        part_label = f"({idx}/{n})" if n > 1 else ""
-        title = f"{emoji} {label} {part_label} — {today_str}"
-        # Only show header comment on first chunk
-        comment = f"*{emoji} {label}* — {today_str}  ({total} items)" if idx == 1 else f"{emoji} {label} {part_label}"
         out = os.path.join(tmp, f"{slug}_{idx:02d}.png")
-        render_chunk(chunk, f"{emoji} {label}  {part_label}", out, row_offset=(idx-1)*ROWS_PER_SHOT)
-        slack_upload(out, f"{slug}_{date.today():%Y%m%d}_{idx:02d}.png", title, comment, channel_id)
+        render_chunk(chunk, f"{emoji} {label}", out, row_offset=(idx-1)*ROWS_PER_SHOT)
+        # Header comment only on first screenshot; rest upload silently
+        comment = f"*{emoji} {label}* — {today_str}  ({total} items)" if idx == 1 else ""
+        slack_upload(out, f"{slug}_{date.today():%Y%m%d}_{idx:02d}.png",
+                     f"{emoji} {label}", comment, channel_id)
 
 def main():
     completed, in_progress = fetch_rows()
