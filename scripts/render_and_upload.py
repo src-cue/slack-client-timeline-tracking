@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Fetches the deliverables Google Sheet, renders two screenshots
-(Completed and In Progress), and uploads them to Slack.
+Fetches the deliverables Google Sheet, renders chunked screenshots
+(~10 rows each), and uploads them to Slack as multiple images.
 """
 
 import csv
@@ -23,23 +23,23 @@ SHEET_ID      = "1M_ZTPSUVLskxa_cuEXgUE2B6YR8LV_hm54GXjRDCg94"
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 SLACK_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
 SLACK_USER_ID = "U0ASCMDD69L"   # rakesh@cuepilot.ai
+ROWS_PER_SHOT = 10              # rows per screenshot
 
 # ── Fetch & parse sheet ───────────────────────────────────────────────────────
 
 def clean_status(s):
-    """Strip leading emoji characters and whitespace."""
+    """Strip leading emoji and whitespace to get plain status text."""
     s = s.strip()
-    s = re.sub(r'^[\U00010000-\U0010FFFF☀-➿⬀-⯿\U0001F300-\U0001F9FF]+\s*', '', s)
+    # Remove any leading Unicode emoji / symbol characters
+    s = re.sub(r'^[\U0001F000-\U0001FFFF☀-➿⬀-⯿︀-️]+\s*', '', s)
     return s.strip()
 
 def fetch_rows():
-    print(f"Fetching: {SHEET_CSV_URL}")
     resp = requests.get(SHEET_CSV_URL, timeout=30)
-    print(f"HTTP {resp.status_code}  content-type: {resp.headers.get('content-type','?')}")
-    print(f"First 300 chars: {resp.text[:300]!r}")
     resp.raise_for_status()
-    reader = csv.DictReader(io.StringIO(resp.text))
-    print(f"CSV columns found: {reader.fieldnames}")
+    # Force UTF-8 so emoji in Status aren't mangled
+    text = resp.content.decode("utf-8")
+    reader = csv.DictReader(io.StringIO(text))
     completed, in_progress = [], []
     for row in reader:
         meet     = row.get("Meet", "").strip()
@@ -59,6 +59,7 @@ def fetch_rows():
             completed.append(entry)
         else:
             in_progress.append(entry)
+    print(f"Fetched: {len(completed)} completed, {len(in_progress)} in-progress")
     return completed, in_progress
 
 # ── Style maps ────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ def stage_badge(stage):
 HEADERS = ["#", "Meet", "Customer", "Module / Task", "Owner(s)", "Status", "Stage",
            "Internal Deadline", "Client Deadline", "Delivered Date", "Notes"]
 
-def build_html(rows, title):
+def build_html(rows, title, row_offset=0):
     today = date.today().strftime("%-d %B %Y")
     header_cells = "".join(
         f'<th style="background:#1a3a2a;color:#fff;padding:8px 10px;font-size:12px;'
@@ -121,7 +122,7 @@ def build_html(rows, title):
         bg = "#ffffff" if i % 2 == 0 else "#f9f9f9"
         rows_html += f"""
         <tr style="background:{bg};border-bottom:1px solid #e8e8e8;">
-          <td style="color:#aaa;font-size:11px;padding:6px 8px;text-align:center;white-space:nowrap;">{i+1}</td>
+          <td style="color:#aaa;font-size:11px;padding:6px 8px;text-align:center;white-space:nowrap;">{row_offset+i+1}</td>
           <td style="padding:5px 8px;">{meet_chip(meet)}</td>
           <td style="padding:5px 8px;font-size:12px;color:#333;white-space:nowrap;">{customer}</td>
           <td style="padding:5px 10px;font-size:12px;color:#222;max-width:280px;line-height:1.4;">{task}</td>
@@ -137,41 +138,41 @@ def build_html(rows, title):
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>
-  body {{ margin:0; padding:16px 20px; background:#fff; font-family:Arial,sans-serif; width:290mm; }}
-  h2   {{ font-size:14px; color:#333; margin:0 0 10px; font-weight:600; }}
+  body {{ margin:0; padding:14px 18px; background:#fff; font-family:Arial,sans-serif; width:290mm; }}
+  h2   {{ font-size:13px; color:#333; margin:0 0 8px; font-weight:600; }}
   table {{ border-collapse:collapse; width:100%; }}
   th, td {{ vertical-align:middle; }}
-  @page {{ size:310mm 297mm; margin:8mm; }}
+  @page {{ size:310mm 5000mm; margin:0; }}
 </style></head>
 <body>
-<h2>{title} <span style="color:#888;font-weight:400;font-size:12px;">({len(rows)} items · {today})</span></h2>
+<h2>{title} <span style="color:#888;font-weight:400;font-size:11px;">{today}</span></h2>
 <table><thead><tr>{header_cells}</tr></thead><tbody>{rows_html}</tbody></table>
 </body></html>"""
 
-# ── Render ────────────────────────────────────────────────────────────────────
+# ── Render a chunk → single tight PNG ────────────────────────────────────────
 
-def render_png(rows, title, out_path):
-    html = build_html(rows, title)
+def render_chunk(rows, title, out_path, row_offset=0):
+    html = build_html(rows, title, row_offset)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = f.name
     try:
         weasyprint.HTML(string=html).write_pdf(pdf_path, presentational_hints=True)
         pages = convert_from_path(pdf_path, dpi=150)
-        total_h = sum(p.height for p in pages)
-        canvas  = Image.new("RGB", (pages[0].width, total_h), "white")
-        y = 0
-        for p in pages:
-            canvas.paste(p, (0, y))
-            y += p.height
-        canvas.save(out_path, "PNG")
-        print(f"Rendered {out_path}  ({canvas.width}×{canvas.height}px)")
+        # Use only the first page (chunk fits on one tall page)
+        img = pages[0]
+        # Crop white space at the bottom
+        gray = img.convert("L")
+        bbox = gray.point(lambda x: 0 if x > 248 else 255).getbbox()
+        if bbox:
+            img = img.crop((0, 0, img.width, min(bbox[3] + 20, img.height)))
+        img.save(out_path, "PNG")
+        print(f"  Rendered {out_path}  ({img.width}×{img.height}px)")
     finally:
         os.unlink(pdf_path)
 
-# ── Slack upload ──────────────────────────────────────────────────────────────
+# ── Slack helpers ─────────────────────────────────────────────────────────────
 
 def get_dm_channel():
-    """Open (or reuse) a DM between the bot and the target user."""
     r = requests.post("https://slack.com/api/conversations.open",
                       headers={"Authorization": f"Bearer {SLACK_TOKEN}",
                                "Content-Type": "application/json"},
@@ -179,15 +180,12 @@ def get_dm_channel():
     r.raise_for_status()
     data = r.json()
     assert data.get("ok"), f"conversations.open failed: {data}"
-    channel_id = data["channel"]["id"]
-    print(f"DM channel: {channel_id}")
-    return channel_id
+    return data["channel"]["id"]
 
 def slack_upload(file_path, filename, title, comment, channel_id):
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     file_size = os.path.getsize(file_path)
 
-    # 1. Get upload URL
     r = requests.post("https://slack.com/api/files.getUploadURLExternal",
                       headers=headers,
                       data={"filename": filename, "length": file_size})
@@ -195,12 +193,10 @@ def slack_upload(file_path, filename, title, comment, channel_id):
     data = r.json()
     assert data.get("ok"), f"getUploadURLExternal: {data}"
 
-    # 2. Upload bytes
     with open(file_path, "rb") as fh:
         up = requests.post(data["upload_url"], files={"file": (filename, fh, "image/png")})
     up.raise_for_status()
 
-    # 3. Complete & post to channel
     done = requests.post("https://slack.com/api/files.completeUploadExternal",
                          headers={**headers, "Content-Type": "application/json"},
                          json={
@@ -211,44 +207,38 @@ def slack_upload(file_path, filename, title, comment, channel_id):
     done.raise_for_status()
     result = done.json()
     assert result.get("ok"), f"completeUploadExternal: {result}"
-    print(f"Uploaded to Slack: {filename}")
+    print(f"  Uploaded: {filename}")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def upload_chunks(rows, label, emoji, slug, today_str, channel_id, tmp):
+    total = len(rows)
+    chunks = [rows[i:i+ROWS_PER_SHOT] for i in range(0, total, ROWS_PER_SHOT)]
+    n = len(chunks)
+    for idx, chunk in enumerate(chunks, 1):
+        part_label = f"({idx}/{n})" if n > 1 else ""
+        title = f"{emoji} {label} {part_label} — {today_str}"
+        # Only show header comment on first chunk
+        comment = f"*{emoji} {label}* — {today_str}  ({total} items)" if idx == 1 else f"{emoji} {label} {part_label}"
+        out = os.path.join(tmp, f"{slug}_{idx:02d}.png")
+        render_chunk(chunk, f"{emoji} {label}  {part_label}", out, row_offset=(idx-1)*ROWS_PER_SHOT)
+        slack_upload(out, f"{slug}_{date.today():%Y%m%d}_{idx:02d}.png", title, comment, channel_id)
+
 def main():
-    print("Fetching Google Sheet...")
     completed, in_progress = fetch_rows()
-    print(f"  {len(completed)} completed, {len(in_progress)} in-progress rows")
-
     today_str = date.today().strftime("%-d %B %Y")
-
-    dm_channel = get_dm_channel()
+    channel_id = get_dm_channel()
 
     with tempfile.TemporaryDirectory() as tmp:
-        comp_path = os.path.join(tmp, "completed.png")
-        inp_path  = os.path.join(tmp, "in_progress.png")
-
-        render_png(completed,   "✅ Completed  (Stage = Complete)",                 comp_path)
-        render_png(in_progress, "🔄 In Progress / Not Started  (Stage ≠ Complete)", inp_path)
-
-        slack_upload(comp_path,
-                     f"completed_{date.today():%Y%m%d}.png",
-                     f"✅ Completed — {today_str}",
-                     f"*✅ Completed Tasks* — {today_str}  ({len(completed)} items)",
-                     dm_channel)
-
-        slack_upload(inp_path,
-                     f"in_progress_{date.today():%Y%m%d}.png",
-                     f"🔄 In Progress / Not Started — {today_str}",
-                     f"*🔄 In Progress / Not Started* — {today_str}  ({len(in_progress)} items)",
-                     dm_channel)
+        upload_chunks(completed,   "Completed",              "✅", "completed",   today_str, channel_id, tmp)
+        upload_chunks(in_progress, "In Progress/Not Started","🔄", "in_progress", today_str, channel_id, tmp)
 
     print("Done.")
 
 if __name__ == "__main__":
-    import traceback
     try:
         main()
     except Exception:
+        import traceback
         traceback.print_exc()
         sys.exit(1)
