@@ -38,6 +38,7 @@ def fetch_rows():
     print(f"First 300 chars: {resp.text[:300]!r}")
     resp.raise_for_status()
     reader = csv.DictReader(io.StringIO(resp.text))
+    print(f"CSV columns found: {reader.fieldnames}")
     completed, in_progress = [], []
     for row in reader:
         meet     = row.get("Meet", "").strip()
@@ -227,4 +228,9 @@ def main():
     print("Done.")
 
 if __name__ == "__main__":
-    main()
+    import traceback
+    try:
+        main()
+    except Exception:
+        traceback.print_exc()
+        sys.exit(1)
