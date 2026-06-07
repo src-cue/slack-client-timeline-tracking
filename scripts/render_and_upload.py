@@ -8,6 +8,7 @@ import csv
 import io
 import os
 import re
+import sys
 import tempfile
 from datetime import date
 
@@ -21,7 +22,7 @@ from PIL import Image
 SHEET_ID      = "1M_ZTPSUVLskxa_cuEXgUE2B6YR8LV_hm54GXjRDCg94"
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 SLACK_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
-SLACK_CHANNEL = "D0ASJB5DW7N"
+SLACK_USER_ID = "U0ASCMDD69L"   # rakesh@cuepilot.ai
 
 # ── Fetch & parse sheet ───────────────────────────────────────────────────────
 
@@ -169,7 +170,20 @@ def render_png(rows, title, out_path):
 
 # ── Slack upload ──────────────────────────────────────────────────────────────
 
-def slack_upload(file_path, filename, title, comment):
+def get_dm_channel():
+    """Open (or reuse) a DM between the bot and the target user."""
+    r = requests.post("https://slack.com/api/conversations.open",
+                      headers={"Authorization": f"Bearer {SLACK_TOKEN}",
+                               "Content-Type": "application/json"},
+                      json={"users": SLACK_USER_ID})
+    r.raise_for_status()
+    data = r.json()
+    assert data.get("ok"), f"conversations.open failed: {data}"
+    channel_id = data["channel"]["id"]
+    print(f"DM channel: {channel_id}")
+    return channel_id
+
+def slack_upload(file_path, filename, title, comment, channel_id):
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     file_size = os.path.getsize(file_path)
 
@@ -191,7 +205,7 @@ def slack_upload(file_path, filename, title, comment):
                          headers={**headers, "Content-Type": "application/json"},
                          json={
                              "files": [{"id": data["file_id"], "title": title}],
-                             "channel_id": SLACK_CHANNEL,
+                             "channel_id": channel_id,
                              "initial_comment": comment,
                          })
     done.raise_for_status()
@@ -208,6 +222,8 @@ def main():
 
     today_str = date.today().strftime("%-d %B %Y")
 
+    dm_channel = get_dm_channel()
+
     with tempfile.TemporaryDirectory() as tmp:
         comp_path = os.path.join(tmp, "completed.png")
         inp_path  = os.path.join(tmp, "in_progress.png")
@@ -218,12 +234,14 @@ def main():
         slack_upload(comp_path,
                      f"completed_{date.today():%Y%m%d}.png",
                      f"✅ Completed — {today_str}",
-                     f"*✅ Completed Tasks* — {today_str}  ({len(completed)} items)")
+                     f"*✅ Completed Tasks* — {today_str}  ({len(completed)} items)",
+                     dm_channel)
 
         slack_upload(inp_path,
                      f"in_progress_{date.today():%Y%m%d}.png",
                      f"🔄 In Progress / Not Started — {today_str}",
-                     f"*🔄 In Progress / Not Started* — {today_str}  ({len(in_progress)} items)")
+                     f"*🔄 In Progress / Not Started* — {today_str}  ({len(in_progress)} items)",
+                     dm_channel)
 
     print("Done.")
 
