@@ -1,0 +1,4 @@
+weasyprint
+pdf2image
+Pillow
+requests
