@@ -32,7 +32,10 @@ def clean_status(s):
     return s.strip()
 
 def fetch_rows():
+    print(f"Fetching: {SHEET_CSV_URL}")
     resp = requests.get(SHEET_CSV_URL, timeout=30)
+    print(f"HTTP {resp.status_code}  content-type: {resp.headers.get('content-type','?')}")
+    print(f"First 300 chars: {resp.text[:300]!r}")
     resp.raise_for_status()
     reader = csv.DictReader(io.StringIO(resp.text))
     completed, in_progress = [], []
