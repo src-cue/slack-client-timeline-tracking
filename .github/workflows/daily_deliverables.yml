@@ -1,8 +1,6 @@
 name: Daily Deliverables Screenshots
 
 on:
-  schedule:
-    - cron: '0 5 * * 1-5'    # 10:30 AM IST (UTC+5:30), Mon–Fri
   workflow_dispatch:           # allow manual trigger from GitHub UI
 
 jobs:
