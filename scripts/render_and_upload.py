@@ -40,7 +40,7 @@ def fetch_rows():
     # Force UTF-8 so emoji in Status aren't mangled
     text = resp.content.decode("utf-8")
     reader = csv.DictReader(io.StringIO(text))
-    completed, in_progress = [], []
+    completed, blocked, in_progress = [], [], []
     for row in reader:
         meet     = row.get("Meet", "").strip()
         customer = row.get("Customer", "").strip()
@@ -57,10 +57,12 @@ def fetch_rows():
         entry = (meet, customer, task, owners, status, stage, int_dl, cli_dl, del_date, notes)
         if stage.strip().lower() == "complete":
             completed.append(entry)
+        elif stage.strip().lower() == "blocked":
+            blocked.append(entry)
         else:
             in_progress.append(entry)
-    print(f"Fetched: {len(completed)} completed, {len(in_progress)} in-progress")
-    return completed, in_progress
+    print(f"Fetched: {len(completed)} completed, {len(blocked)} blocked, {len(in_progress)} in-progress")
+    return completed, blocked, in_progress
 
 # ── Style maps ────────────────────────────────────────────────────────────────
 
@@ -210,6 +212,9 @@ def complete_upload(file_ids, label, comment, channel_id):
 
 def upload_chunks(rows, label, emoji, slug, today_str, channel_id, tmp):
     total = len(rows)
+    if total == 0:
+        print(f"  Skipping {label}: no items")
+        return
     chunks = [rows[i:i+ROWS_PER_SHOT] for i in range(0, total, ROWS_PER_SHOT)]
     # Stage all files first
     file_ids = []
@@ -223,11 +228,12 @@ def upload_chunks(rows, label, emoji, slug, today_str, channel_id, tmp):
                     channel_id)
 
 def main():
-    completed, in_progress = fetch_rows()
+    completed, blocked, in_progress = fetch_rows()
     today_str = date.today().strftime("%-d %B %Y")
 
     with tempfile.TemporaryDirectory() as tmp:
         upload_chunks(completed,   "Completed",              "✅", "completed",   today_str, SLACK_CHANNEL, tmp)
+        upload_chunks(blocked,     "Blocked",                "⛔", "blocked",     today_str, SLACK_CHANNEL, tmp)
         upload_chunks(in_progress, "In Progress/Not Started","🔄", "in_progress", today_str, SLACK_CHANNEL, tmp)
 
     print("Done.")
